@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#f7f7f5" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Mi Despensa" />
+  <title>Mi Despensa</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+<div id="app">
+  <header class="topbar">
+    <div><p class="eyebrow">INVENTARIO DOMÉSTICO</p><h1>Mi Despensa</h1></div>
+    <button class="icon-btn" id="settingsBtn" aria-label="Ajustes">•••</button>
+  </header>
+
+  <main>
+    <section id="homeView" class="view active">
+      <div class="summary-grid">
+        <article class="summary-card large">
+          <span class="summary-label">UNIDADES TOTALES</span>
+          <strong id="totalUnits">0</strong>
+          <span id="totalProductsText">0 productos distintos</span>
+        </article>
+        <article class="summary-card"><span class="summary-label">NEVERA</span><strong id="fridgeUnits">0</strong></article>
+        <article class="summary-card"><span class="summary-label">ARMARIO</span><strong id="pantryUnits">0</strong></article>
+      </div>
+
+      <button class="scan-primary" id="quickScanBtn">
+        <span class="scan-icon">▣</span>
+        <span><strong>Escanear producto</strong><small>Añadir o retirar unidades</small></span><span>›</span>
+      </button>
+
+      <button class="meal-primary" data-go="meals">
+        <span class="meal-emoji">🍽</span>
+        <span><strong>Calcular una comida</strong><small>Suma kcal y macronutrientes según la cantidad usada</small></span><span>›</span>
+      </button>
+
+      <div class="section-head"><div><p class="eyebrow">RESUMEN</p><h2>Necesitan atención</h2></div></div>
+      <div id="attentionList" class="stack-list"></div>
+
+      <div class="section-head">
+        <div><p class="eyebrow">RECIENTES</p><h2>Últimos productos</h2></div>
+        <button class="text-btn" data-go="inventory">Ver todos</button>
+      </div>
+      <div id="recentList" class="product-list"></div>
+    </section>
+
+    <section id="inventoryView" class="view">
+      <div class="section-head inventory-head">
+        <div><p class="eyebrow">INVENTARIO</p><h2>Todo lo que tienes</h2></div>
+        <button class="round-add" id="manualAddBtn">+</button>
+      </div>
+      <div class="search-wrap"><input id="searchInput" type="search" placeholder="Buscar producto, marca o código…"></div>
+      <div class="segmented" id="locationFilter">
+        <button class="active" data-filter="all">Todo</button>
+        <button data-filter="fridge">Nevera</button>
+        <button data-filter="pantry">Armario</button>
+      </div>
+      <div id="inventoryList" class="product-list full"></div>
+    </section>
+
+    <section id="mealsView" class="view">
+      <div class="section-head inventory-head">
+        <div><p class="eyebrow">NUTRICIÓN</p><h2>Mis comidas</h2></div>
+        <button class="round-add" id="newMealBtn">+</button>
+      </div>
+      <div class="nutrition-hero">
+        <div><span>PLATOS GUARDADOS</span><strong id="mealCount">0</strong></div>
+        <p>Calcula el total a partir de los gramos o mililitros realmente utilizados.</p>
+      </div>
+      <button class="primary-btn full-btn" id="newMealLargeBtn">+ Crear nueva comida</button>
+      <div class="section-head"><div><p class="eyebrow">HISTORIAL</p><h2>Últimos platos</h2></div></div>
+      <div id="mealsList" class="meal-list"></div>
+    </section>
+
+    <section id="historyView" class="view">
+      <div class="section-head"><div><p class="eyebrow">MOVIMIENTOS</p><h2>Historial</h2></div></div>
+      <div id="historyList" class="history-list"></div>
+    </section>
+  </main>
+
+  <nav class="bottom-nav">
+    <button class="nav-item active" data-view="home"><span>⌂</span><small>Inicio</small></button>
+    <button class="nav-item" data-view="inventory"><span>▦</span><small>Inventario</small></button>
+    <button class="scan-fab" id="scanFab" aria-label="Escanear"><span>▣</span></button>
+    <button class="nav-item" data-view="meals"><span>◉</span><small>Comidas</small></button>
+    <button class="nav-item" data-view="history"><span>↻</span><small>Historial</small></button>
+  </nav>
+</div>
+
+<div class="modal" id="scannerModal">
+  <div class="modal-sheet scanner-sheet">
+    <div class="modal-head"><div><p class="eyebrow">ESCÁNER</p><h2>Escanea el código</h2></div><button class="close-btn" data-close="scannerModal">×</button></div>
+    <p class="muted">Enfoca un EAN/UPC. Si la cámara no funciona, introduce el código manualmente.</p>
+    <div id="reader"></div>
+    <div class="scanner-actions"><input id="manualBarcode" inputmode="numeric" placeholder="Código de barras"><button class="primary-btn" id="manualBarcodeBtn">Buscar</button></div>
+  </div>
+</div>
+
+<div class="modal" id="productModal">
+  <div class="modal-sheet">
+    <div class="modal-head"><div><p class="eyebrow" id="productModalEyebrow">PRODUCTO</p><h2 id="productModalTitle">Añadir producto</h2></div><button class="close-btn" data-close="productModal">×</button></div>
+    <div class="product-editor-top">
+      <img id="productImage" class="editor-image" alt="">
+      <div class="editor-meta">
+        <label>Nombre<input id="productName" placeholder="Ej. Leche semidesnatada"></label>
+        <label>Marca<input id="productBrand" placeholder="Ej. Hacendado"></label>
+      </div>
+    </div>
+
+    <div class="form-grid">
+      <label>Código de barras<input id="productBarcode" inputmode="numeric" placeholder="841…"></label>
+      <label>Ubicación<select id="productLocation"><option value="fridge">Nevera</option><option value="pantry">Armario</option></select></label>
+      <label>Cantidad<div class="qty-input"><button type="button" id="qtyMinus">−</button><input id="productQty" type="number" min="0" step="1" value="1"><button type="button" id="qtyPlus">+</button></div></label>
+      <label>Stock mínimo<input id="productMinStock" type="number" min="0" step="1" value="1"></label>
+      <label class="full-field">Caducidad (opcional)<input id="productExpiry" type="date"></label>
+    </div>
+
+    <div class="nutrition-box">
+      <div class="nutrition-title"><div><p class="eyebrow">VALORES NUTRICIONALES</p><h3>Por 100 g / ml</h3></div><span id="nutritionSource">Manual</span></div>
+      <div class="nutrition-grid">
+        <label>Kcal<input id="productKcal100" type="number" min="0" step="0.1" placeholder="Ej. 46"></label>
+        <label>Proteínas (g)<input id="productProtein100" type="number" min="0" step="0.1" placeholder="3.2"></label>
+        <label>Hidratos (g)<input id="productCarbs100" type="number" min="0" step="0.1" placeholder="4.8"></label>
+        <label>Grasas (g)<input id="productFat100" type="number" min="0" step="0.1" placeholder="1.6"></label>
+      </div>
+      <label class="nutrition-unit">Los valores anteriores son por
+        <select id="productNutritionBasis"><option value="g">100 g</option><option value="ml">100 ml</option></select>
+      </label>
+      <p class="tiny-note">Estos datos se rellenan automáticamente cuando el producto escaneado dispone de información nutricional. Puedes corregirlos manualmente.</p>
+    </div>
+
+    <div class="modal-actions"><button class="secondary-btn hidden" id="deleteProductBtn">Eliminar</button><button class="primary-btn grow" id="saveProductBtn">Guardar</button></div>
+  </div>
+</div>
+
+<div class="modal" id="stockModal">
+  <div class="modal-sheet compact">
+    <div class="modal-head"><div><p class="eyebrow">STOCK</p><h2 id="stockProductName">Producto</h2></div><button class="close-btn" data-close="stockModal">×</button></div>
+    <div class="big-stock" id="stockCurrent">0</div><p class="muted centered">unidades disponibles</p>
+    <label style="margin-top:16px">Unidades a mover
+      <div class="qty-input" style="margin-top:6px"><button type="button" id="moveQtyMinus">−</button><input id="moveQty" type="number" min="1" step="1" value="1"><button type="button" id="moveQtyPlus">+</button></div>
+    </label>
+    <div class="stock-actions"><button class="stock-btn remove" data-delta="-1"><b>−</b><span>Consumir</span></button><button class="stock-btn add" data-delta="1"><b>+</b><span>Añadir</span></button></div>
+    <button class="secondary-btn full-btn" id="editFromStockBtn">Editar ficha</button>
+  </div>
+</div>
+
+<div class="modal" id="mealModal">
+  <div class="modal-sheet">
+    <div class="modal-head"><div><p class="eyebrow">NUEVA COMIDA</p><h2>Calcula tu plato</h2></div><button class="close-btn" data-close="mealModal">×</button></div>
+    <label>Nombre del plato<input id="mealName" class="standalone-input" placeholder="Ej. Arroz con pollo"></label>
+
+    <div class="meal-total-card">
+      <div><span>TOTAL</span><strong><b id="mealTotalKcal">0</b> kcal</strong></div>
+      <div class="macro-row">
+        <span><b id="mealProtein">0</b> g<small>Proteína</small></span>
+        <span><b id="mealCarbs">0</b> g<small>Hidratos</small></span>
+        <span><b id="mealFat">0</b> g<small>Grasas</small></span>
+      </div>
+    </div>
+
+    <div id="mealIngredients" class="meal-ingredients"></div>
+    <button class="secondary-btn full-btn" id="addIngredientBtn">+ Añadir alimento</button>
+    <p class="tiny-note">El cálculo se realiza con los valores nutricionales guardados en cada producto. Si faltan, edita la ficha del producto y añádelos.</p>
+    <div class="modal-actions"><button class="primary-btn grow" id="saveMealBtn">Guardar comida</button></div>
+  </div>
+</div>
+
+<div class="modal" id="ingredientModal">
+  <div class="modal-sheet compact">
+    <div class="modal-head"><div><p class="eyebrow">INGREDIENTE</p><h2>Añadir alimento</h2></div><button class="close-btn" data-close="ingredientModal">×</button></div>
+    <label>Producto
+      <select id="ingredientProduct" class="standalone-input"></select>
+    </label>
+    <div id="ingredientProductInfo" class="ingredient-info"></div>
+    <label id="ingredientAmountLabel">Cantidad usada (g)
+      <input id="ingredientAmount" class="standalone-input" type="number" min="0.1" step="0.1" value="100">
+    </label>
+    <div class="ingredient-kcal-preview"><span>Este ingrediente aporta</span><strong id="ingredientKcalPreview">0 kcal</strong></div>
+    <button class="primary-btn full-btn" id="confirmIngredientBtn">Añadir al plato</button>
+  </div>
+</div>
+
+<div class="modal" id="mealDetailModal">
+  <div class="modal-sheet compact">
+    <div class="modal-head"><div><p class="eyebrow">COMIDA GUARDADA</p><h2 id="mealDetailName">Plato</h2></div><button class="close-btn" data-close="mealDetailModal">×</button></div>
+    <div class="meal-total-card detail">
+      <div><span>TOTAL</span><strong><b id="detailKcal">0</b> kcal</strong></div>
+      <div class="macro-row">
+        <span><b id="detailProtein">0</b> g<small>Proteína</small></span>
+        <span><b id="detailCarbs">0</b> g<small>Hidratos</small></span>
+        <span><b id="detailFat">0</b> g<small>Grasas</small></span>
+      </div>
+    </div>
+    <div id="mealDetailIngredients" class="meal-ingredients"></div>
+    <button class="danger-link" id="deleteMealBtn">Eliminar comida</button>
+  </div>
+</div>
+
+<div class="modal" id="settingsModal">
+  <div class="modal-sheet compact">
+    <div class="modal-head"><div><p class="eyebrow">DATOS</p><h2>Copia de seguridad</h2></div><button class="close-btn" data-close="settingsModal">×</button></div>
+    <p class="muted">Los datos se guardan en este dispositivo. Exporta una copia periódicamente.</p>
+    <button class="primary-btn full-btn" id="exportBtn">Exportar copia</button>
+    <label class="secondary-btn full-btn file-label">Importar copia<input id="importInput" type="file" accept=".json,application/json"></label>
+    <button class="danger-link" id="clearAllBtn">Borrar todos los datos</button>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+</body>
+</html>

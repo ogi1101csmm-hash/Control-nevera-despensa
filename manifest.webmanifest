@@ -1,0 +1,21 @@
+{
+  "name": "Mi Despensa - Nevera y armario",
+  "short_name": "Mi Despensa",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f6f6f3",
+  "theme_color": "#f6f6f3",
+  "description": "Control de stock doméstico mediante códigos de barras.",
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
