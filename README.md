@@ -1,41 +1,69 @@
-# Mi Despensa v2
+# Mi Despensa v3 - consumo automatico de calorias
 
-PWA para controlar nevera/armario y calcular las calorías de las comidas.
+PWA para controlar el stock de nevera/armario y registrar nutricion al consumir alimentos.
 
-## Inventario
-- Escaneo de EAN/UPC con cámara.
-- Nombre, marca, imagen y nutrición desde Open Food Facts cuando están disponibles.
-- Nevera / Armario.
-- Entradas y consumos de varias unidades.
-- Stock mínimo, caducidad, buscador e historial.
+## Cambio principal de esta version
 
-## Comidas
-1. Abre **Comidas > Crear nueva comida**.
-2. Pon un nombre al plato.
-3. Añade productos del inventario.
-4. Indica la cantidad realmente usada en gramos o mililitros.
-5. La app calcula automáticamente:
-   - kcal totales
-   - proteínas
-   - hidratos
-   - grasas
-   - kcal aportadas por cada ingrediente
-6. Guarda el plato para consultarlo después.
+La aplicacion diferencia expresamente entre **Consumir** y **Eliminar / descartar**:
 
-Si un producto no tiene información nutricional, edita su ficha y rellena sus valores por 100 g/ml.
+- **Consumir**: resta unidades del inventario y registra kcal, proteinas, hidratos y grasas en el dia actual.
+- **Eliminar / producto malo o caducado**: resta unidades del inventario, registra el movimiento como `Descarte` y **no suma calorias**.
+- **Eliminar ficha del producto**: borra el producto del inventario y tampoco registra calorias.
 
-## GitHub Pages
-1. Crea un repositorio.
-2. Sube todos estos archivos a la raíz.
-3. `Settings > Pages > Deploy from a branch`.
-4. Rama `main`, carpeta `/(root)`.
-5. Abre la URL con Safari y usa `Compartir > Añadir a pantalla de inicio`.
+## Como se calculan las calorias
 
-## Actualizar desde una versión anterior
-Puedes sustituir los archivos del repositorio por los de este ZIP. El inventario ya guardado utiliza las mismas claves de almacenamiento, por lo que seguirá apareciendo en el mismo iPhone/navegador. Los productos antiguos simplemente tendrán vacíos los nuevos campos nutricionales hasta que los edites o vuelvas a consultar sus datos.
+Cada producto puede guardar:
 
-## Nota sobre nutrición
-Las kcal y macronutrientes dependen de la información almacenada para cada producto. Los datos de bases colaborativas o etiquetas pueden contener errores o faltar; revísalos si necesitas precisión.
+- kcal por 100 g/ml
+- proteinas por 100 g/ml
+- hidratos por 100 g/ml
+- grasas por 100 g/ml
+- contenido de una unidad (por ejemplo, `125 g` para un yogur)
 
-## Copias
-La exportación JSON incluye inventario, historial y comidas.
+Al pulsar **Consumir**, la app abre una confirmacion donde puedes indicar:
+
+1. cuantas unidades salen del stock;
+2. en que comida lo has consumido (Desayuno, Comida, Cena o Snacks);
+3. cuantos gramos/ml has consumido realmente.
+
+Si se conoce el contenido de una unidad, la cantidad se precarga automaticamente. Ejemplo: 2 yogures de 125 g -> 250 g.
+
+La formula utilizada es:
+
+`nutriente consumido = valor por 100 x cantidad consumida / 100`
+
+## Nutricion diaria
+
+En la seccion **Comidas** aparece ahora un bloque **Consumido hoy** con:
+
+- kcal acumuladas
+- proteina
+- hidratos
+- grasas
+- lista de alimentos retirados y consumidos durante el dia
+
+Los platos creados manualmente siguen funcionando de forma independiente.
+
+## Escaneo
+
+Al escanear un producto se consulta Open Food Facts. Cuando la informacion existe, la app intenta rellenar:
+
+- nombre y marca
+- imagen
+- valores nutricionales
+- peso/volumen del envase para usarlo como contenido por unidad
+
+Si algun dato falta, puede editarse manualmente.
+
+## Actualizar en GitHub Pages
+
+1. Sustituye los archivos de tu repositorio por los de este ZIP.
+2. Haz commit/push a `main`.
+3. GitHub Pages publicara la nueva version.
+4. Si el iPhone mantiene una version antigua, cierra la PWA y vuelve a abrirla. El Service Worker usa ahora una cache nueva.
+
+Los datos existentes siguen usando las mismas claves de inventario y comidas. Los productos ya guardados se conservan; solo tendran vacio el nuevo campo `contenido por unidad` hasta que lo edites.
+
+## Copia de seguridad
+
+La exportacion JSON incluye ahora inventario, historial, platos y consumos nutricionales.

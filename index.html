@@ -72,11 +72,21 @@
         <div><p class="eyebrow">NUTRICIÓN</p><h2>Mis comidas</h2></div>
         <button class="round-add" id="newMealBtn">+</button>
       </div>
+      <div class="daily-nutrition-card">
+        <div class="daily-kcal-row"><div><span>CONSUMIDO HOY</span><strong><b id="todayConsumedKcal">0</b> kcal</strong></div><div class="daily-count"><b id="todayConsumedItems">0</b><small>consumos</small></div></div>
+        <div class="macro-row daily-macros">
+          <span><b id="todayConsumedProtein">0</b> g<small>Proteína</small></span>
+          <span><b id="todayConsumedCarbs">0</b> g<small>Hidratos</small></span>
+          <span><b id="todayConsumedFat">0</b> g<small>Grasas</small></span>
+        </div>
+      </div>
       <div class="nutrition-hero">
         <div><span>PLATOS GUARDADOS</span><strong id="mealCount">0</strong></div>
-        <p>Calcula el total a partir de los gramos o mililitros realmente utilizados.</p>
+        <p>Calcula platos manualmente o deja que la app registre las calorías cuando retiras alimentos para consumirlos.</p>
       </div>
       <button class="primary-btn full-btn" id="newMealLargeBtn">+ Crear nueva comida</button>
+      <div class="section-head"><div><p class="eyebrow">CONSUMOS DE HOY</p><h2>Alimentos retirados</h2></div></div>
+      <div id="todayConsumptionList" class="meal-list"></div>
       <div class="section-head"><div><p class="eyebrow">HISTORIAL</p><h2>Últimos platos</h2></div></div>
       <div id="mealsList" class="meal-list"></div>
     </section>
@@ -135,7 +145,11 @@
       <label class="nutrition-unit">Los valores anteriores son por
         <select id="productNutritionBasis"><option value="g">100 g</option><option value="ml">100 ml</option></select>
       </label>
-      <p class="tiny-note">Estos datos se rellenan automáticamente cuando el producto escaneado dispone de información nutricional. Puedes corregirlos manualmente.</p>
+      <div class="nutrition-grid package-grid">
+        <label>Contenido de 1 unidad<input id="productUnitAmount" type="number" min="0" step="0.1" placeholder="Ej. 125"></label>
+        <label>Unidad<select id="productUnitMeasure"><option value="g">g</option><option value="ml">ml</option></select></label>
+      </div>
+      <p class="tiny-note">El contenido por unidad permite calcular automáticamente las kcal al retirar, por ejemplo: 1 yogur = 125 g. Se intenta rellenar automáticamente desde el código de barras.</p>
     </div>
 
     <div class="modal-actions"><button class="secondary-btn hidden" id="deleteProductBtn">Eliminar</button><button class="primary-btn grow" id="saveProductBtn">Guardar</button></div>
@@ -149,8 +163,34 @@
     <label style="margin-top:16px">Unidades a mover
       <div class="qty-input" style="margin-top:6px"><button type="button" id="moveQtyMinus">−</button><input id="moveQty" type="number" min="1" step="1" value="1"><button type="button" id="moveQtyPlus">+</button></div>
     </label>
-    <div class="stock-actions"><button class="stock-btn remove" data-delta="-1"><b>−</b><span>Consumir</span></button><button class="stock-btn add" data-delta="1"><b>+</b><span>Añadir</span></button></div>
+    <div class="stock-actions"><button class="stock-btn remove" id="consumeStockBtn"><b>−</b><span>Consumir</span></button><button class="stock-btn add" id="addStockBtn"><b>+</b><span>Añadir</span></button></div>
     <button class="secondary-btn full-btn" id="editFromStockBtn">Editar ficha</button>
+    <button class="discard-btn full-btn" id="discardProductBtn">Eliminar / producto malo o caducado</button>
+    <p class="tiny-note centered">Consumir registra calorías. Eliminar/descartar nunca suma calorías.</p>
+  </div>
+</div>
+
+
+<div class="modal" id="consumeModal">
+  <div class="modal-sheet compact">
+    <div class="modal-head"><div><p class="eyebrow">REGISTRAR CONSUMO</p><h2 id="consumeProductName">Producto</h2></div><button class="close-btn" data-close="consumeModal">×</button></div>
+    <div class="consume-summary"><span>Stock que se retirará</span><strong><b id="consumeUnitsLabel">1</b> ud.</strong></div>
+    <label>Comida
+      <select id="consumeMeal" class="standalone-input"><option>Desayuno</option><option selected>Comida</option><option>Cena</option><option>Snacks</option></select>
+    </label>
+    <label id="consumeAmountLabel">Cantidad realmente consumida (g)
+      <input id="consumeAmount" class="standalone-input" type="number" min="0.1" step="0.1" placeholder="Ej. 125">
+    </label>
+    <div class="meal-total-card consume-preview">
+      <div><span>SE AÑADIRÁ AL DÍA</span><strong><b id="consumeKcalPreview">0</b> kcal</strong></div>
+      <div class="macro-row">
+        <span><b id="consumeProteinPreview">0</b> g<small>Proteína</small></span>
+        <span><b id="consumeCarbsPreview">0</b> g<small>Hidratos</small></span>
+        <span><b id="consumeFatPreview">0</b> g<small>Grasas</small></span>
+      </div>
+    </div>
+    <div id="consumeWarning" class="consume-warning hidden"></div>
+    <button class="primary-btn full-btn" id="confirmConsumeBtn">Consumir y registrar</button>
   </div>
 </div>
 
