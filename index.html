@@ -12,7 +12,9 @@
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <link rel="stylesheet" href="styles.css">
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js" defer></script>
-  <script src="app.js" defer></script>
+  <script src="https://unpkg.com/@zxing/browser@0.2.1/umd/zxing-browser.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js" defer></script>
+  <script src="app.js?v=7" defer></script>
 </head>
 <body>
 <div id="app">
@@ -108,10 +110,30 @@
 
 <div class="modal" id="scannerModal">
   <div class="modal-sheet scanner-sheet">
-    <div class="modal-head"><div><p class="eyebrow">ESCÁNER</p><h2>Escanea el código</h2></div><button class="close-btn" data-close="scannerModal">×</button></div>
-    <p class="muted">Enfoca un EAN/UPC. Si la cámara no funciona, introduce el código manualmente.</p>
-    <div id="reader"></div>
-    <div class="scanner-actions"><input id="manualBarcode" inputmode="numeric" placeholder="Código de barras"><button class="primary-btn" id="manualBarcodeBtn">Buscar</button></div>
+    <div class="modal-head"><div><p class="eyebrow">CÓDIGO DE BARRAS</p><h2>Haz una foto</h2></div><button class="close-btn" data-close="scannerModal">×</button></div>
+    <p class="muted">Haz una foto nítida procurando que el código ocupe buena parte de la imagen. La app lo procesa automáticamente con varios lectores y solo acepta un EAN/UPC validado.</p>
+
+    <input id="barcodePhotoInput" type="file" accept="image/*" capture="environment" hidden>
+    <button class="scan-photo-btn" id="takeBarcodePhotoBtn">
+      <span class="scan-photo-icon">▣</span>
+      <span><strong>Sacar foto del código</strong><small>Usa la cámara trasera del dispositivo</small></span>
+    </button>
+
+    <div id="barcodePhotoPreviewWrap" class="photo-scan-preview hidden">
+      <img id="barcodePhotoPreview" alt="Fotografía del código de barras">
+      <div id="barcodeProcessing" class="processing-box hidden">
+        <span class="processing-spinner"></span>
+        <div><strong>Procesando imagen…</strong><small>Localizando y validando el código de barras</small></div>
+      </div>
+    </div>
+
+    <div id="barcodeScanResult"></div>
+    <div id="reader" class="hidden-reader"></div>
+
+    <details class="manual-fallback">
+      <summary>Introducir código manualmente</summary>
+      <div class="scanner-actions"><input id="manualBarcode" inputmode="numeric" placeholder="EAN / UPC"><button class="primary-btn" id="manualBarcodeBtn">Buscar</button></div>
+    </details>
   </div>
 </div>
 

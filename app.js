@@ -132,10 +132,240 @@ async function fetchProduct(barcode){
   openModal("productModal")
  }catch(err){await stopScanner();closeModal("scannerModal");resetEditor();$("#productBarcode").value=clean;openModal("productModal");toast("Sin datos online. Añádelo manualmente")}
 }
-async function openScanner(){openModal("scannerModal");$("#manualBarcode").value="";setTimeout(startScanner,120)}
-$("#scanFab").onclick=openScanner;$("#quickScanBtn").onclick=openScanner;$("#manualBarcodeBtn").onclick=()=>fetchProduct($("#manualBarcode").value);$("#manualBarcode").addEventListener("keydown",e=>{if(e.key==="Enter")fetchProduct(e.target.value)});
-async function startScanner(){if(scanning)return;if(typeof Html5Qrcode==="undefined"){$("#reader").innerHTML=`<div class="empty" style="margin:30px">No se pudo cargar el lector. Usa el código manual.</div>`;return}try{scanner=new Html5Qrcode("reader",{formatsToSupport:[Html5QrcodeSupportedFormats.EAN_13,Html5QrcodeSupportedFormats.EAN_8,Html5QrcodeSupportedFormats.UPC_A,Html5QrcodeSupportedFormats.UPC_E,Html5QrcodeSupportedFormats.CODE_128],useBarCodeDetectorIfSupported:true});scanning=true;await scanner.start({facingMode:"environment"},{fps:10,qrbox:(w,h)=>({width:Math.min(w*.88,330),height:Math.min(h*.34,130)}),aspectRatio:1.777},async decoded=>{if(scanning){scanning=false;try{await scanner.stop()}catch{}await fetchProduct(decoded)}},()=>{})}catch(e){scanning=false;$("#reader").innerHTML=`<div class="empty" style="margin:30px">No se ha podido abrir la cámara. Comprueba el permiso o introduce el código manualmente.</div>`}}
-async function stopScanner(){if(scanner){try{if(scanner.isScanning)await scanner.stop()}catch{}try{scanner.clear()}catch{}}scanner=null;scanning=false;const r=$("#reader");if(r)r.innerHTML=""}
+function normalizeBarcode(raw){
+ const digits=String(raw||"").replace(/\D/g,"");
+ // Algunos lectores devuelven UPC-A como EAN-13 anteponiendo 0.
+ if(digits.length===13 && digits.startsWith("0") && validUpcA(digits.slice(1))) return digits.slice(1);
+ return digits;
+}
+function validEan13(code){
+ if(!/^\d{13}$/.test(code))return false;
+ let sum=0;for(let i=0;i<12;i++)sum+=Number(code[i])*(i%2===0?1:3);
+ return ((10-(sum%10))%10)===Number(code[12]);
+}
+function validEan8(code){
+ if(!/^\d{8}$/.test(code))return false;
+ let sum=0;for(let i=0;i<7;i++)sum+=Number(code[i])*(i%2===0?3:1);
+ return ((10-(sum%10))%10)===Number(code[7]);
+}
+function validUpcA(code){
+ if(!/^\d{12}$/.test(code))return false;
+ let sum=0;for(let i=0;i<11;i++)sum+=Number(code[i])*(i%2===0?3:1);
+ return ((10-(sum%10))%10)===Number(code[11]);
+}
+function validRetailBarcode(raw){
+ const code=String(raw||"").replace(/\D/g,"");
+ return validEan13(code)||validEan8(code)||validUpcA(code);
+}
+function setPhotoScanResult(type,title,detail=""){
+ const box=$("#barcodeScanResult");
+ box.innerHTML=`<div class="scan-result ${type}"><strong>${esc(title)}</strong>${detail?`<small>${esc(detail)}</small>`:""}</div>`;
+}
+async function fileToImage(file){
+ return await new Promise((resolve,reject)=>{
+  const url=URL.createObjectURL(file),img=new Image();
+  img.onload=()=>{URL.revokeObjectURL(url);resolve(img)};
+  img.onerror=e=>{URL.revokeObjectURL(url);reject(e)};
+  img.src=url;
+ });
+}
+function canvasFromImage(img,maxSide=2400){
+ const scale=Math.min(1,maxSide/Math.max(img.naturalWidth,img.naturalHeight));
+ const c=document.createElement("canvas");
+ c.width=Math.max(1,Math.round(img.naturalWidth*scale));c.height=Math.max(1,Math.round(img.naturalHeight*scale));
+ c.getContext("2d",{willReadFrequently:true}).drawImage(img,0,0,c.width,c.height);return c;
+}
+function cloneCanvas(src){const c=document.createElement("canvas");c.width=src.width;c.height=src.height;c.getContext("2d").drawImage(src,0,0);return c}
+function cropCanvas(src,x,y,w,h){const c=document.createElement("canvas");c.width=Math.max(1,Math.round(w));c.height=Math.max(1,Math.round(h));c.getContext("2d").drawImage(src,x,y,w,h,0,0,c.width,c.height);return c}
+function rotateCanvas(src,deg){
+ const rad=deg*Math.PI/180,swap=Math.abs(deg)%180===90,c=document.createElement("canvas");c.width=swap?src.height:src.width;c.height=swap?src.width:src.height;
+ const ctx=c.getContext("2d");ctx.translate(c.width/2,c.height/2);ctx.rotate(rad);ctx.drawImage(src,-src.width/2,-src.height/2);return c;
+}
+function preprocessCanvas(src,mode){
+ const c=cloneCanvas(src),ctx=c.getContext("2d",{willReadFrequently:true}),im=ctx.getImageData(0,0,c.width,c.height),d=im.data;
+ let min=255,max=0;
+ for(let i=0;i<d.length;i+=4){const g=.299*d[i]+.587*d[i+1]+.114*d[i+2];if(g<min)min=g;if(g>max)max=g}
+ const range=Math.max(35,max-min);
+ // Umbral de Otsu para binarización robusta.
+ const hist=new Array(256).fill(0);for(let i=0;i<d.length;i+=4){hist[Math.max(0,Math.min(255,Math.round(.299*d[i]+.587*d[i+1]+.114*d[i+2])))]++}
+ const total=c.width*c.height;let sum=0;for(let i=0;i<256;i++)sum+=i*hist[i];let sumB=0,wB=0,maxVar=0,otsu=128;
+ for(let i=0;i<256;i++){wB+=hist[i];if(!wB)continue;const wF=total-wB;if(!wF)break;sumB+=i*hist[i];const mB=sumB/wB,mF=(sum-sumB)/wF,v=wB*wF*(mB-mF)*(mB-mF);if(v>maxVar){maxVar=v;otsu=i}}
+ for(let i=0;i<d.length;i+=4){const g=.299*d[i]+.587*d[i+1]+.114*d[i+2];let v=g;
+  if(mode==="gray")v=g;
+  if(mode==="contrast")v=Math.max(0,Math.min(255,(g-min)*255/range));
+  if(mode==="threshold")v=g>otsu?255:0;
+  if(mode==="thresholdLow")v=g>Math.max(65,otsu-22)?255:0;
+  if(mode==="thresholdHigh")v=g>Math.min(205,otsu+22)?255:0;
+  d[i]=d[i+1]=d[i+2]=v;
+ }
+ ctx.putImageData(im,0,0);return c;
+}
+function buildBarcodeCanvases(base){
+ const W=base.width,H=base.height,items=[];
+ const add=(name,c)=>items.push({name,canvas:c});
+ add("original",base);
+ add("centro",cropCanvas(base,W*.06,H*.18,W*.88,H*.64));
+ add("banda-centro",cropCanvas(base,W*.03,H*.30,W*.94,H*.40));
+ add("banda-superior",cropCanvas(base,W*.03,H*.08,W*.94,H*.52));
+ add("banda-inferior",cropCanvas(base,W*.03,H*.40,W*.94,H*.52));
+ const seeds=[...items];
+ for(const it of seeds){add(it.name+"-contraste",preprocessCanvas(it.canvas,"contrast"));add(it.name+"-umbral",preprocessCanvas(it.canvas,"threshold"))}
+ // Las dos rotaciones cubren fotos tomadas con el móvil girado.
+ add("rot90",rotateCanvas(base,90));add("rot270",rotateCanvas(base,270));
+ return items;
+}
+async function canvasToFile(c,name){return await new Promise((resolve,reject)=>c.toBlob(b=>b?resolve(new File([b],`${name}.jpg`,{type:"image/jpeg"})):reject(new Error("No se pudo preparar imagen")),"image/jpeg",.96))}
+function addBarcodeVote(votes,raw,source){
+ const code=normalizeBarcode(raw);if(!validRetailBarcode(code))return false;
+ if(!votes.has(code))votes.set(code,new Set());votes.get(code).add(source);return true;
+}
+async function detectNativeBarcode(canvas,votes,label){
+ if(!("BarcodeDetector" in globalThis))return;
+ try{
+  let formats;try{const supported=await BarcodeDetector.getSupportedFormats();formats=["ean_13","ean_8","upc_a","upc_e"].filter(x=>supported.includes(x))}catch{}
+  const detector=formats?.length?new BarcodeDetector({formats}):new BarcodeDetector();
+  const found=await detector.detect(canvas);for(const b of found||[])addBarcodeVote(votes,b.rawValue,`native:${label}`);
+ }catch(e){}
+}
+async function detectZxingBarcode(canvas,votes,label){
+ if(typeof ZXingBrowser==="undefined")return;
+ try{
+  const reader=new ZXingBrowser.BrowserMultiFormatOneDReader();
+  const result=reader.decodeFromCanvas(canvas);addBarcodeVote(votes,result?.getText?.()||result?.text||String(result||""),`zxing:${label}`);
+ }catch(e){}
+}
+async function detectHtml5Barcode(canvas,votes,label,reader){
+ if(!reader)return;
+ try{const file=await canvasToFile(canvas,"scan-"+label.replace(/[^a-z0-9_-]/gi,"-"));const decoded=await reader.scanFile(file,false);addBarcodeVote(votes,decoded,`html5:${label}`)}catch(e){}
+}
+
+function yieldToUi(){return new Promise(resolve=>setTimeout(resolve,0));}
+function scaleCanvas(src,factor){
+ const c=document.createElement("canvas");c.width=Math.max(1,Math.round(src.width*factor));c.height=Math.max(1,Math.round(src.height*factor));
+ const ctx=c.getContext("2d");ctx.imageSmoothingEnabled=factor<1;ctx.imageSmoothingQuality="high";ctx.drawImage(src,0,0,c.width,c.height);return c;
+}
+function buildAppleFocusedCanvases(base){
+ const W=base.width,H=base.height,out=[];
+ const push=(name,c)=>out.push({name,canvas:c});
+ // En fotos de iPhone el código suele ocupar una franja horizontal. Probamos varias zonas,
+ // incluyendo imágenes donde el usuario no haya centrado perfectamente el código.
+ const bands=[
+  ["full",0,0,1,1],["middle",.02,.20,.96,.60],["mid-tight",.02,.30,.96,.40],
+  ["upper",.02,.05,.96,.55],["lower",.02,.40,.96,.55],
+  ["left",0,.12,.72,.76],["right",.28,.12,.72,.76]
+ ];
+ for(const [name,x,y,w,h] of bands){
+  const crop=cropCanvas(base,W*x,H*y,W*w,H*h);push(name,crop);
+  // Aumentar un recorte puede ayudar mucho cuando el código ocupa pocos píxeles en una foto de 12/24/48 MP.
+  if(crop.width<1800)push(name+"-up",scaleCanvas(crop,Math.min(2.0,1800/crop.width)));
+ }
+ const originals=[...out];
+ for(const it of originals){
+  push(it.name+"-contrast",preprocessCanvas(it.canvas,"contrast"));
+  push(it.name+"-threshold",preprocessCanvas(it.canvas,"threshold"));
+ }
+ push("rotate90",rotateCanvas(base,90));push("rotate270",rotateCanvas(base,270));
+ return out;
+}
+function barcodeCandidatesFromText(text){
+ const compact=String(text||"").replace(/[^0-9\n ]/g," ");
+ const candidates=new Set();
+ for(const line of compact.split(/\n+/)){
+  const digits=line.replace(/\D/g,"");
+  for(const len of [13,12,8]){
+   if(digits.length===len)candidates.add(digits);
+   if(digits.length>len){for(let i=0;i<=digits.length-len;i++)candidates.add(digits.slice(i,i+len));}
+  }
+ }
+ return [...candidates].filter(validRetailBarcode);
+}
+async function detectOcrBarcode(base,votes){
+ if(typeof Tesseract==="undefined")return;
+ // OCR es solo respaldo: lee los dígitos impresos debajo de las barras. Nunca se acepta sin checksum EAN/UPC.
+ const W=base.width,H=base.height;
+ const zones=[
+  ["digits-lower",cropCanvas(base,0,H*.50,W,H*.48)],
+  ["digits-middle",cropCanvas(base,0,H*.35,W,H*.55)],
+  ["digits-full",base]
+ ];
+ for(const [name,canvas] of zones){
+  try{
+   setPhotoScanResult("working","Leyendo números impresos…",`Comprobación OCR: ${name}`);
+   const data=await Tesseract.recognize(canvas,"eng",{logger:()=>{}});
+   for(const code of barcodeCandidatesFromText(data?.data?.text||""))addBarcodeVote(votes,code,`ocr:${name}`);
+   if([...votes.values()].some(v=>v.size>=2))return;
+  }catch(e){}
+  await yieldToUi();
+ }
+}
+async function decodeBarcodeFile(file){
+ const img=await fileToImage(file),base=canvasFromImage(img,3200),variants=buildAppleFocusedCanvases(base),votes=new Map();
+ const h5=typeof Html5Qrcode!=="undefined"?new Html5Qrcode("reader"):null;
+ try{
+  // 1) Motores rápidos. BarcodeDetector (cuando Safari lo ofrezca) + ZXing.
+  for(let i=0;i<variants.length;i++){
+   const v=variants[i];
+   setPhotoScanResult("working","Analizando fotografía…",`Intento ${i+1} de ${variants.length}`);
+   await detectNativeBarcode(v.canvas,votes,v.name);
+   await detectZxingBarcode(v.canvas,votes,v.name);
+   const ranked=[...votes.entries()].sort((a,b)=>b[1].size-a[1].size);
+   if(ranked[0]&&ranked[0][1].size>=2)return ranked[0][0];
+   if(i%3===2)await yieldToUi();
+  }
+  // 2) Segundo decodificador independiente sobre las variantes con más probabilidad.
+  if(h5){
+   const preferred=variants.filter(v=>/^(full|middle|mid-tight|lower|upper)(-|$)/.test(v.name)).slice(0,18);
+   for(let i=0;i<preferred.length;i++){
+    const v=preferred[i];setPhotoScanResult("working","Segunda comprobación…",`Decodificación ${i+1} de ${preferred.length}`);
+    await detectHtml5Barcode(v.canvas,votes,v.name,h5);
+    const ranked=[...votes.entries()].sort((a,b)=>b[1].size-a[1].size);
+    if(ranked[0]&&ranked[0][1].size>=2)return ranked[0][0];
+    if(i%2===1)await yieldToUi();
+   }
+  }
+  // 3) Respaldo: OCR de los números impresos. Se usa solo con validación matemática EAN/UPC.
+  await detectOcrBarcode(base,votes);
+ }finally{try{await h5?.clear()}catch(e){}}
+ const ranked=[...votes.entries()].sort((a,b)=>b[1].size-a[1].size);
+ if(ranked.length)return ranked[0][0];
+ throw new Error("No se ha podido extraer un EAN/UPC válido. Repite la foto más cerca, con todas las barras y los números visibles, evitando reflejos.");
+}
+async function processBarcodePhoto(file){
+ if(!file)return;
+ const previewUrl=URL.createObjectURL(file);
+ $("#barcodePhotoPreview").src=previewUrl;
+ $("#barcodePhotoPreviewWrap").classList.remove("hidden");
+ $("#barcodeProcessing").classList.remove("hidden");
+ $("#barcodeScanResult").innerHTML="";
+ try{
+  const code=await decodeBarcodeFile(file);
+  $("#manualBarcode").value=code;
+  setPhotoScanResult("ok",`Código detectado: ${code}`,"Código validado. Buscando el producto automáticamente…");
+  if(navigator.vibrate){try{navigator.vibrate(70)}catch(e){}}
+  await new Promise(r=>setTimeout(r,250));
+  await fetchProduct(code);
+ }catch(err){
+  console.error("Error procesando la fotografía del código:",err);
+  setPhotoScanResult("error","No se pudo obtener un código válido",err?.message||"Repite la foto más cerca, recta y sin reflejos.");
+ }finally{
+  $("#barcodeProcessing").classList.add("hidden");
+  setTimeout(()=>URL.revokeObjectURL(previewUrl),30000);
+ }
+}
+function openScanner(){
+ openModal("scannerModal");
+ $("#manualBarcode").value="";$("#barcodePhotoInput").value="";$("#barcodeScanResult").innerHTML="";
+ $("#barcodePhotoPreviewWrap").classList.add("hidden");$("#barcodeProcessing").classList.add("hidden");
+ // IMPORTANTE EN iOS/Safari: click() debe ejecutarse dentro del gesto original del usuario.
+ // No usar setTimeout ni promesas antes de abrir el selector/cámara.
+ $("#barcodePhotoInput").click();
+}
+$("#scanFab").onclick=openScanner;$("#quickScanBtn").onclick=openScanner;
+$("#takeBarcodePhotoBtn").onclick=()=>{$("#barcodePhotoInput").value="";$("#barcodePhotoInput").click()};
+$("#barcodePhotoInput").onchange=async e=>{const file=e.target.files?.[0];if(file)await processBarcodePhoto(file)};
+$("#manualBarcodeBtn").onclick=()=>{const code=normalizeBarcode($("#manualBarcode").value);if(!validRetailBarcode(code)){setPhotoScanResult("error","Código manual no válido","Comprueba el EAN/UPC y su dígito de control.");return}fetchProduct(code)};
+$("#manualBarcode").addEventListener("keydown",e=>{if(e.key==="Enter")$("#manualBarcodeBtn").click()});
+async function stopScanner(){return;}
 
 function openNewMeal(){draftIngredients=[];$("#mealName").value="";renderDraftMeal();openModal("mealModal")}
 $("#newMealBtn").onclick=openNewMeal;$("#newMealLargeBtn").onclick=openNewMeal;

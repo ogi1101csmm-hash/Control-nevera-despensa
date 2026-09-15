@@ -78,3 +78,22 @@ La exportacion JSON incluye ahora inventario, historial, platos y consumos nutri
 - El descarte resta g/ml del stock pero nunca añade calorías.
 - Los productos antiguos se migran automáticamente usando `cantidad de envases x contenido por envase`, cuando ese dato existe.
 - Open Food Facts se consulta también para intentar obtener la cantidad neta del envase (`product_quantity`, unidad y `quantity`).
+
+## Cambio v5 - escaneo mediante fotografía
+- El botón de escaneo abre la cámara del dispositivo para sacar una fotografía del código de barras.
+- La imagen se procesa automáticamente en el propio navegador; no se usa vídeo en directo.
+- La app intenta decodificar la foto original y variantes de contraste/umbral para mejorar la lectura.
+- Solo se aceptan EAN-13, EAN-8 o UPC-A cuyo dígito de control sea válido.
+- Si la lectura es válida, el código se usa automáticamente para buscar el producto.
+- Si la lectura falla o el checksum no es correcto, se pide repetir la foto y no se consulta ningún código dudoso.
+- La introducción manual queda únicamente como método de respaldo.
+
+
+## v7 - captura y lectura reforzada para iPhone
+- El botón de escaneo abre el selector de cámara dentro del mismo gesto del usuario, evitando bloqueos de Safari.
+- `capture="environment"` solicita la cámara trasera en iPhone/iPad.
+- La foto se analiza automáticamente después de capturarla.
+- Se prueban múltiples recortes, escalados, contrastes, umbrales y rotaciones.
+- Se combinan BarcodeDetector cuando está disponible, ZXing y html5-qrcode.
+- Como último respaldo, OCR lee los dígitos impresos debajo de las barras.
+- Ningún resultado se acepta si no supera el checksum EAN-13, EAN-8 o UPC-A.
