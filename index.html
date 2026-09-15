@@ -25,7 +25,7 @@
     <section id="homeView" class="view active">
       <div class="summary-grid">
         <article class="summary-card large">
-          <span class="summary-label">UNIDADES TOTALES</span>
+          <span class="summary-label">PRODUCTOS CON STOCK</span>
           <strong id="totalUnits">0</strong>
           <span id="totalProductsText">0 productos distintos</span>
         </article>
@@ -149,7 +149,7 @@
         <label>Contenido de 1 unidad<input id="productUnitAmount" type="number" min="0" step="0.1" placeholder="Ej. 125"></label>
         <label>Unidad<select id="productUnitMeasure"><option value="g">g</option><option value="ml">ml</option></select></label>
       </div>
-      <p class="tiny-note">El contenido por unidad permite calcular automáticamente las kcal al retirar, por ejemplo: 1 yogur = 125 g. Se intenta rellenar automáticamente desde el código de barras.</p>
+      <p class="tiny-note">El contenido por envase define el stock real. Ej.: caldo 1 L = 1000 ml; si consumes 250 ml quedarán 750 ml. Se intenta rellenar automáticamente desde el código de barras.</p>
     </div>
 
     <div class="modal-actions"><button class="secondary-btn hidden" id="deleteProductBtn">Eliminar</button><button class="primary-btn grow" id="saveProductBtn">Guardar</button></div>
@@ -159,8 +159,8 @@
 <div class="modal" id="stockModal">
   <div class="modal-sheet compact">
     <div class="modal-head"><div><p class="eyebrow">STOCK</p><h2 id="stockProductName">Producto</h2></div><button class="close-btn" data-close="stockModal">×</button></div>
-    <div class="big-stock" id="stockCurrent">0</div><p class="muted centered">unidades disponibles</p>
-    <label style="margin-top:16px">Unidades a mover
+    <div class="big-stock" id="stockCurrent">0</div><p class="muted centered" id="stockCurrentUnit">unidades disponibles</p>
+    <label style="margin-top:16px">Envases a añadir / descartar (solo productos por unidades)
       <div class="qty-input" style="margin-top:6px"><button type="button" id="moveQtyMinus">−</button><input id="moveQty" type="number" min="1" step="1" value="1"><button type="button" id="moveQtyPlus">+</button></div>
     </label>
     <div class="stock-actions"><button class="stock-btn remove" id="consumeStockBtn"><b>−</b><span>Consumir</span></button><button class="stock-btn add" id="addStockBtn"><b>+</b><span>Añadir</span></button></div>
@@ -174,7 +174,7 @@
 <div class="modal" id="consumeModal">
   <div class="modal-sheet compact">
     <div class="modal-head"><div><p class="eyebrow">REGISTRAR CONSUMO</p><h2 id="consumeProductName">Producto</h2></div><button class="close-btn" data-close="consumeModal">×</button></div>
-    <div class="consume-summary"><span>Stock que se retirará</span><strong><b id="consumeUnitsLabel">1</b> ud.</strong></div>
+    <div class="consume-summary"><span>Stock disponible antes del consumo</span><strong id="consumeUnitsLabel">0</strong></div>
     <label>Comida
       <select id="consumeMeal" class="standalone-input"><option>Desayuno</option><option selected>Comida</option><option>Cena</option><option>Snacks</option></select>
     </label>

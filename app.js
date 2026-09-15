@@ -26,12 +26,27 @@ function openModal(id){$("#"+id).classList.add("open")}
 async function closeModal(id){$("#"+id).classList.remove("open");if(id==="scannerModal")await stopScanner()}
 $$("[data-close]").forEach(b=>b.onclick=()=>closeModal(b.dataset.close));
 function locationText(v){return v==="fridge"?"Nevera":"Armario"}
+function hasMeasuredStock(p){return num(p.unitAmount)>0 && ["g","ml"].includes(p.unitMeasure||p.nutritionBasis)}
+function ensureMeasuredStock(p){
+ if(hasMeasuredStock(p) && p.stockAmount==null) p.stockAmount=round1(num(p.qty)*num(p.unitAmount));
+ return p;
+}
+function stockAmount(p){ensureMeasuredStock(p);return hasMeasuredStock(p)?Math.max(0,num(p.stockAmount)):Math.max(0,num(p.qty))}
+function stockMeasure(p){return hasMeasuredStock(p)?(p.unitMeasure||p.nutritionBasis||"g"):"ud."}
+function stockLabel(p){return `${round1(stockAmount(p))} ${stockMeasure(p)}`}
+function syncQtyFromStock(p){
+ if(hasMeasuredStock(p)) p.qty=p.stockAmount>0?Math.ceil(num(p.stockAmount)/num(p.unitAmount)):0;
+}
+products.forEach(ensureMeasuredStock);
 
 function productCard(p){
- const cls=p.qty===0?"zero":p.qty<=p.minStock?"low":"";
+ ensureMeasuredStock(p);
+ const available=stockAmount(p), lowLimit=hasMeasuredStock(p)?num(p.minStock)*num(p.unitAmount):num(p.minStock);
+ const cls=available===0?"zero":available<=lowLimit?"low":"";
  const nutrition=p.kcal100?` · ${round1(p.kcal100)} kcal/100${p.nutritionBasis||"g"}`:"";
- return `<article class="product-card" data-product="${p.id}"><img class="product-thumb" src="${esc(p.image||defaultImage())}" alt=""><div><h3>${esc(p.name||"Producto sin nombre")}</h3><p>${esc(p.brand||"")} ${p.brand?"·":""} ${locationText(p.location)}${nutrition}${p.expiry?" · cad. "+new Date(p.expiry+"T12:00").toLocaleDateString("es-ES",{day:"2-digit",month:"short"}):""}</p></div><div class="qty-pill ${cls}">${p.qty}</div></article>`
+ return `<article class="product-card" data-product="${p.id}"><img class="product-thumb" src="${esc(p.image||defaultImage())}" alt=""><div><h3>${esc(p.name||"Producto sin nombre")}</h3><p>${esc(p.brand||"")} ${p.brand?"·":""} ${locationText(p.location)}${nutrition}${p.expiry?" · cad. "+new Date(p.expiry+"T12:00").toLocaleDateString("es-ES",{day:"2-digit",month:"short"}):""}</p></div><div class="qty-pill ${cls}">${hasMeasuredStock(p)?`${round1(available)}<small>${stockMeasure(p)}</small>`:p.qty}</div></article>`
 }
+
 function mealTotals(ingredients){
  return ingredients.reduce((a,i)=>{
    const f=num(i.amount)/100;
@@ -39,10 +54,11 @@ function mealTotals(ingredients){
  },{kcal:0,protein:0,carbs:0,fat:0})
 }
 function renderAll(){
- const total=products.reduce((a,p)=>a+num(p.qty),0),fridge=products.filter(p=>p.location==="fridge").reduce((a,p)=>a+num(p.qty),0),pantry=products.filter(p=>p.location==="pantry").reduce((a,p)=>a+num(p.qty),0);
- $("#totalUnits").textContent=total;$("#fridgeUnits").textContent=fridge;$("#pantryUnits").textContent=pantry;$("#totalProductsText").textContent=`${products.length} producto${products.length===1?"":"s"} distintos`;
+ products.forEach(ensureMeasuredStock);
+ const total=products.filter(p=>stockAmount(p)>0).length,fridge=products.filter(p=>p.location==="fridge"&&stockAmount(p)>0).length,pantry=products.filter(p=>p.location==="pantry"&&stockAmount(p)>0).length;
+ $("#totalUnits").textContent=total;$("#fridgeUnits").textContent=fridge;$("#pantryUnits").textContent=pantry;$("#totalProductsText").textContent=`${products.length} producto${products.length===1?"":"s"} registrados`;
  const attention=[],today=new Date();today.setHours(0,0,0,0);
- products.forEach(p=>{if(p.qty<=p.minStock)attention.push({p,type:p.qty===0?"danger":"",text:p.qty===0?"Sin stock":`Stock bajo: ${p.qty} ud.`});if(p.expiry){const exp=new Date(p.expiry+"T00:00:00"),days=Math.ceil((exp-today)/86400000);if(days<=3)attention.push({p,type:days<0?"danger":"",text:days<0?"Caducado":days===0?"Caduca hoy":`Caduca en ${days} día${days===1?"":"s"}`})}});
+ products.forEach(p=>{const available=stockAmount(p),lowLimit=hasMeasuredStock(p)?num(p.minStock)*num(p.unitAmount):num(p.minStock);if(available<=lowLimit)attention.push({p,type:available===0?"danger":"",text:available===0?"Sin stock":`Stock bajo: ${stockLabel(p)}`});if(p.expiry){const exp=new Date(p.expiry+"T00:00:00"),days=Math.ceil((exp-today)/86400000);if(days<=3)attention.push({p,type:days<0?"danger":"",text:days<0?"Caducado":days===0?"Caduca hoy":`Caduca en ${days} día${days===1?"":"s"}`})}});
  $("#attentionList").innerHTML=attention.length?attention.slice(0,6).map(a=>`<div class="attention-card ${a.type}" data-product="${a.p.id}"><span class="alert-dot"></span><div><strong>${esc(a.p.name)}</strong><small>${a.text}</small></div></div>`).join(""):`<div class="empty">Todo está bajo control.</div>`;
  const recent=[...products].sort((a,b)=>new Date(b.updatedAt)-new Date(a.updatedAt)).slice(0,5);$("#recentList").innerHTML=recent.length?recent.map(productCard).join(""):`<div class="empty">Escanea tu primer producto para empezar.</div>`;
  const q=$("#searchInput")?.value?.trim().toLowerCase()||"";let list=products.filter(p=>currentFilter==="all"||p.location===currentFilter);if(q)list=list.filter(p=>[p.name,p.brand,p.barcode].some(x=>(x||"").toLowerCase().includes(q)));list.sort((a,b)=>a.name.localeCompare(b.name,"es"));$("#inventoryList").innerHTML=list.length?list.map(productCard).join(""):`<div class="empty">No hay productos con este filtro.</div>`;
@@ -50,7 +66,7 @@ function renderAll(){
  const todayConsumption=consumption.filter(c=>c.date===dayKey());
  const dayTotals=todayConsumption.reduce((a,c)=>{a.kcal+=num(c.calories);a.protein+=num(c.protein);a.carbs+=num(c.carbs);a.fat+=num(c.fat);return a},{kcal:0,protein:0,carbs:0,fat:0});
  $("#todayConsumedKcal").textContent=Math.round(dayTotals.kcal);$("#todayConsumedItems").textContent=todayConsumption.length;$("#todayConsumedProtein").textContent=round1(dayTotals.protein);$("#todayConsumedCarbs").textContent=round1(dayTotals.carbs);$("#todayConsumedFat").textContent=round1(dayTotals.fat);
- $("#todayConsumptionList").innerHTML=todayConsumption.length?todayConsumption.map(c=>`<article class="consumption-card"><div><h3>${esc(c.name)}</h3><p>${esc(c.meal)} · ${round1(c.amount)} ${c.basis} · ${c.stockUnits} ud. retiradas</p></div><div><strong>${Math.round(c.calories)} kcal</strong><button data-delete-consumption="${c.id}" aria-label="Eliminar registro">×</button></div></article>`).join(""):`<div class="empty">Cuando pulses Consumir en un producto aparecerá aquí.</div>`;
+ $("#todayConsumptionList").innerHTML=todayConsumption.length?todayConsumption.map(c=>`<article class="consumption-card"><div><h3>${esc(c.name)}</h3><p>${esc(c.meal)} · ${round1(c.amount)} ${c.basis} retirados del stock</p></div><div><strong>${Math.round(c.calories)} kcal</strong><button data-delete-consumption="${c.id}" aria-label="Eliminar registro">×</button></div></article>`).join(""):`<div class="empty">Cuando pulses Consumir en un producto aparecerá aquí.</div>`;
  $("#mealCount").textContent=meals.length;
  $("#mealsList").innerHTML=meals.length?meals.map(m=>{const t=m.totals||mealTotals(m.ingredients||[]);return `<article class="meal-card" data-meal="${m.id}"><div><h3>${esc(m.name)}</h3><p>${m.ingredients.length} ingrediente${m.ingredients.length===1?"":"s"} · ${fmtDate(m.createdAt)}</p></div><div class="meal-kcal">${Math.round(t.kcal)} <small>kcal</small></div></article>`}).join(""):`<div class="empty">Todavía no has guardado ninguna comida.</div>`;
 }
@@ -70,21 +86,32 @@ $("#manualAddBtn").onclick=()=>openEditor();$("#qtyMinus").onclick=()=>$("#produ
 $("#saveProductBtn").onclick=()=>{
  const name=$("#productName").value.trim();if(!name){toast("Escribe un nombre");return}
  const data={name,brand:$("#productBrand").value.trim(),barcode:$("#productBarcode").value.trim(),location:$("#productLocation").value,qty:Math.max(0,num($("#productQty").value)),minStock:Math.max(0,num($("#productMinStock").value)),expiry:$("#productExpiry").value,image:$("#productImage").src&& !$("#productImage").src.startsWith(location.href)?$("#productImage").src:"",kcal100:num($("#productKcal100").value)||null,protein100:num($("#productProtein100").value)||null,carbs100:num($("#productCarbs100").value)||null,fat100:num($("#productFat100").value)||null,nutritionBasis:$("#productNutritionBasis").value,unitAmount:num($("#productUnitAmount").value)||null,unitMeasure:$("#productUnitMeasure").value,nutritionSource:$("#nutritionSource").textContent,updatedAt:nowIso()};
- if(editingId){const idx=products.findIndex(p=>p.id===editingId),old=products[idx];if(old&&old.qty!==data.qty)addHistory({...old,...data},data.qty-old.qty,"Ajuste manual");products[idx]={...old,...data}}
- else{const same=data.barcode&&products.find(p=>p.barcode===data.barcode);if(same){same.qty+=data.qty;same.updatedAt=nowIso();addHistory(same,data.qty,"Entrada");toast(`Añadidas ${data.qty} ud.`)}else{const p={id:uid(),createdAt:nowIso(),...data};products.push(p);addHistory(p,p.qty,"Alta inicial")}}
+ if(editingId){
+   const idx=products.findIndex(p=>p.id===editingId),old=products[idx];
+   const packageDefinitionChanged=num(old?.unitAmount)!==num(data.unitAmount)||(old?.unitMeasure||"")!==(data.unitMeasure||"");
+   const packageCountChanged=num(old?.qty)!==num(data.qty);
+   products[idx]={...old,...data};
+   const updated=products[idx];
+   if(hasMeasuredStock(updated)&&(old?.stockAmount==null||packageDefinitionChanged||packageCountChanged)) updated.stockAmount=round1(data.qty*num(data.unitAmount));
+   if(old&&packageCountChanged)addHistory(updated,data.qty-num(old.qty),"Ajuste manual");
+ } else {
+   const same=data.barcode&&products.find(p=>p.barcode===data.barcode);
+   if(same){ensureMeasuredStock(same);same.qty+=data.qty;if(hasMeasuredStock({...same,...data}))same.stockAmount=round1(stockAmount(same)+data.qty*num(data.unitAmount));same.updatedAt=nowIso();addHistory(same,data.qty,"Entrada");toast(`Añadidas ${data.qty} ud.`)}
+   else{const p={id:uid(),createdAt:nowIso(),...data};if(hasMeasuredStock(p))p.stockAmount=round1(p.qty*num(p.unitAmount));products.push(p);addHistory(p,p.qty,"Alta inicial")}
+ }
  persist();closeModal("productModal")
 };
 $("#deleteProductBtn").onclick=()=>{if(!editingId)return;if(confirm("¿Eliminar este producto del inventario?")){products=products.filter(p=>p.id!==editingId);persist();closeModal("productModal");toast("Producto eliminado")}};
 
-function openStock(id){const p=products.find(x=>x.id===id);if(!p)return;stockId=id;$("#stockProductName").textContent=p.name;$("#stockCurrent").textContent=p.qty;$("#moveQty").value=1;openModal("stockModal")}
+function openStock(id){const p=products.find(x=>x.id===id);if(!p)return;ensureMeasuredStock(p);stockId=id;$("#stockProductName").textContent=p.name;$("#stockCurrent").textContent=hasMeasuredStock(p)?round1(stockAmount(p)):p.qty;$("#stockCurrentUnit").textContent=hasMeasuredStock(p)?stockMeasure(p):"unidades disponibles";$("#moveQty").value=1;openModal("stockModal")}
 $("#moveQtyMinus").onclick=()=>$("#moveQty").value=Math.max(1,num($("#moveQty").value)-1);$("#moveQtyPlus").onclick=()=>$("#moveQty").value=Math.max(1,num($("#moveQty").value)+1);
-$("#addStockBtn").onclick=()=>{const p=products.find(x=>x.id===stockId);if(!p)return;const amount=Math.max(1,num($("#moveQty").value));p.qty+=amount;p.updatedAt=nowIso();addHistory(p,amount,"Entrada");$("#stockCurrent").textContent=p.qty;$("#moveQty").value=1;persist();toast(`Añadidas ${amount} ud.`)};
-function openConsume(){const p=products.find(x=>x.id===stockId);if(!p)return;const units=Math.min(Math.max(1,num($("#moveQty").value)),p.qty);if(p.qty<=0){toast("No queda stock");return}$("#consumeProductName").textContent=p.name;$("#consumeUnitsLabel").textContent=units;const basis=p.nutritionBasis||p.unitMeasure||"g";$("#consumeAmountLabel").childNodes[0].nodeValue=`Cantidad realmente consumida (${basis}) `;const autoAmount=num(p.unitAmount)>0?round1(num(p.unitAmount)*units):"";$("#consumeAmount").value=autoAmount;$("#consumeMeal").value="Comida";updateConsumePreview();closeModal("stockModal");openModal("consumeModal")}
+$("#addStockBtn").onclick=()=>{const p=products.find(x=>x.id===stockId);if(!p)return;ensureMeasuredStock(p);const packs=Math.max(1,num($("#moveQty").value));if(hasMeasuredStock(p)){p.stockAmount=round1(stockAmount(p)+packs*num(p.unitAmount));syncQtyFromStock(p)}else p.qty+=packs;p.updatedAt=nowIso();addHistory(p,packs,"Entrada");$("#stockCurrent").textContent=hasMeasuredStock(p)?round1(stockAmount(p)):p.qty;$("#moveQty").value=1;persist();toast(hasMeasuredStock(p)?`Añadidos ${round1(packs*num(p.unitAmount))} ${stockMeasure(p)}`:`Añadidas ${packs} ud.`)};
+function openConsume(){const p=products.find(x=>x.id===stockId);if(!p)return;ensureMeasuredStock(p);if(stockAmount(p)<=0){toast("No queda stock");return}const basis=hasMeasuredStock(p)?stockMeasure(p):(p.nutritionBasis||"g");$("#consumeProductName").textContent=p.name;$("#consumeUnitsLabel").textContent=stockLabel(p);$("#consumeAmountLabel").childNodes[0].nodeValue=`Cantidad realmente consumida (${basis}) `;$("#consumeAmount").value=hasMeasuredStock(p)?Math.min(stockAmount(p),num(p.unitAmount)||100):"";$("#consumeAmount").max=hasMeasuredStock(p)?stockAmount(p):"";$("#consumeMeal").value="Comida";updateConsumePreview();closeModal("stockModal");openModal("consumeModal")}
 $("#consumeStockBtn").onclick=openConsume;
 $("#consumeAmount").oninput=updateConsumePreview;
-function updateConsumePreview(){const p=products.find(x=>x.id===stockId);if(!p)return;const amount=Math.max(0,num($("#consumeAmount").value)),factor=amount/100;$("#consumeKcalPreview").textContent=Math.round(num(p.kcal100)*factor);$("#consumeProteinPreview").textContent=round1(num(p.protein100)*factor);$("#consumeCarbsPreview").textContent=round1(num(p.carbs100)*factor);$("#consumeFatPreview").textContent=round1(num(p.fat100)*factor);const warning=$("#consumeWarning");if(!num(p.kcal100)){warning.textContent="Este producto no tiene calorías guardadas. Puedes consumirlo, pero no será posible sumar kcal hasta completar su ficha nutricional.";warning.classList.remove("hidden")}else if(!amount){warning.textContent="Indica los gramos/ml consumidos para calcular las calorías.";warning.classList.remove("hidden")}else{warning.classList.add("hidden")}}
-$("#confirmConsumeBtn").onclick=()=>{const p=products.find(x=>x.id===stockId);if(!p)return;const units=Math.min(Math.max(1,num($("#consumeUnitsLabel").textContent)),p.qty),amount=Math.max(0,num($("#consumeAmount").value)),basis=p.nutritionBasis||p.unitMeasure||"g";if(num(p.kcal100)>0&&amount<=0){toast("Indica la cantidad consumida");return}const factor=amount/100,entry={id:uid(),productId:p.id,name:p.name,date:dayKey(),at:nowIso(),meal:$("#consumeMeal").value,stockUnits:units,amount,basis,calories:num(p.kcal100)*factor,protein:num(p.protein100)*factor,carbs:num(p.carbs100)*factor,fat:num(p.fat100)*factor};p.qty=Math.max(0,p.qty-units);p.updatedAt=nowIso();consumption.unshift(entry);addHistory(p,-units,"Consumo");persist();closeModal("consumeModal");toast(`${units} ud. consumidas · ${Math.round(entry.calories)} kcal registradas`)};
-$("#discardProductBtn").onclick=()=>{const p=products.find(x=>x.id===stockId);if(!p)return;const units=Math.min(Math.max(1,num($("#moveQty").value)),p.qty);if(units<=0){toast("No queda stock");return}if(confirm(`¿Eliminar ${units} ud. de ${p.name} por caducidad, mal estado o descarte? No se registrarán calorías.`)){p.qty=Math.max(0,p.qty-units);p.updatedAt=nowIso();addHistory(p,-units,"Descarte");$("#stockCurrent").textContent=p.qty;$("#moveQty").value=1;persist();toast(`${units} ud. descartadas · 0 kcal`)}};
+function updateConsumePreview(){const p=products.find(x=>x.id===stockId);if(!p)return;const amount=Math.max(0,num($("#consumeAmount").value)),factor=amount/100;$("#consumeKcalPreview").textContent=Math.round(num(p.kcal100)*factor);$("#consumeProteinPreview").textContent=round1(num(p.protein100)*factor);$("#consumeCarbsPreview").textContent=round1(num(p.carbs100)*factor);$("#consumeFatPreview").textContent=round1(num(p.fat100)*factor);const warning=$("#consumeWarning");if(hasMeasuredStock(p)&&amount>stockAmount(p)){warning.textContent=`No puedes consumir más de ${stockLabel(p)}.`;warning.classList.remove("hidden")}else if(!num(p.kcal100)){warning.textContent="Este producto no tiene calorías guardadas. Se descontará del stock, pero no se podrán calcular kcal hasta completar su ficha nutricional.";warning.classList.remove("hidden")}else if(!amount){warning.textContent="Indica los gramos/ml consumidos para calcular las calorías.";warning.classList.remove("hidden")}else{warning.classList.add("hidden")}}
+$("#confirmConsumeBtn").onclick=()=>{const p=products.find(x=>x.id===stockId);if(!p)return;ensureMeasuredStock(p);const amount=Math.max(0,num($("#consumeAmount").value)),basis=hasMeasuredStock(p)?stockMeasure(p):(p.nutritionBasis||"g");if(amount<=0){toast("Indica la cantidad consumida");return}if(hasMeasuredStock(p)&&amount>stockAmount(p)){toast(`Solo quedan ${stockLabel(p)}`);return}const factor=amount/100,entry={id:uid(),productId:p.id,name:p.name,date:dayKey(),at:nowIso(),meal:$("#consumeMeal").value,amount,basis,calories:num(p.kcal100)*factor,protein:num(p.protein100)*factor,carbs:num(p.carbs100)*factor,fat:num(p.fat100)*factor};if(hasMeasuredStock(p)){p.stockAmount=round1(Math.max(0,stockAmount(p)-amount));syncQtyFromStock(p)}else{p.qty=Math.max(0,p.qty-1)}p.updatedAt=nowIso();consumption.unshift(entry);addHistory(p,-amount,"Consumo");persist();closeModal("consumeModal");toast(`${round1(amount)} ${basis} consumidos · quedan ${stockLabel(p)} · ${Math.round(entry.calories)} kcal`)};
+$("#discardProductBtn").onclick=()=>{const p=products.find(x=>x.id===stockId);if(!p)return;ensureMeasuredStock(p);if(stockAmount(p)<=0){toast("No queda stock");return}if(hasMeasuredStock(p)){const raw=prompt(`¿Cuántos ${stockMeasure(p)} quieres descartar? No se registrarán calorías.`,String(round1(stockAmount(p))));if(raw===null)return;const amount=Math.max(0,num(raw));if(!amount||amount>stockAmount(p)){toast(`Introduce una cantidad entre 0 y ${round1(stockAmount(p))} ${stockMeasure(p)}`);return}p.stockAmount=round1(stockAmount(p)-amount);syncQtyFromStock(p);p.updatedAt=nowIso();addHistory(p,-amount,"Descarte");$("#stockCurrent").textContent=round1(stockAmount(p));persist();toast(`${round1(amount)} ${stockMeasure(p)} descartados · quedan ${stockLabel(p)} · 0 kcal`)}else{const units=Math.min(Math.max(1,num($("#moveQty").value)),p.qty);if(confirm(`¿Eliminar ${units} ud. de ${p.name}? No se registrarán calorías.`)){p.qty=Math.max(0,p.qty-units);p.updatedAt=nowIso();addHistory(p,-units,"Descarte");$("#stockCurrent").textContent=p.qty;persist();toast(`${units} ud. descartadas · 0 kcal`)}}};
 $("#editFromStockBtn").onclick=()=>{const p=products.find(x=>x.id===stockId);closeModal("stockModal");openEditor(p)};
 function addHistory(p,delta,reason){if(!delta)return;history.unshift({id:uid(),productId:p.id,name:p.name,delta,reason,at:nowIso()})}
 
@@ -92,12 +119,15 @@ async function fetchProduct(barcode){
  const clean=barcode.replace(/\D/g,"");if(!clean){toast("Código no válido");return}const existing=products.find(p=>p.barcode===clean);if(existing){await stopScanner();closeModal("scannerModal");openStock(existing.id);toast("Producto ya registrado");return}
  toast("Buscando producto…");
  try{
-  const fields="product_name,product_name_es,brands,image_front_small_url,image_front_url,nutriments,serving_quantity,serving_quantity_unit,product_quantity,product_quantity_unit";
+  const fields="product_name,product_name_es,brands,image_front_small_url,image_front_url,nutriments,serving_quantity,serving_quantity_unit,product_quantity,product_quantity_unit,quantity";
   const r=await fetch(`https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(clean)}?fields=${fields}`),data=await r.json();await stopScanner();closeModal("scannerModal");resetEditor();$("#productBarcode").value=clean;
   if(data.status===1&&data.product){
     const p=data.product,n=p.nutriments||{};$("#productName").value=p.product_name_es||p.product_name||"";$("#productBrand").value=p.brands||"";$("#productImage").src=p.image_front_small_url||p.image_front_url||defaultImage();$("#productModalTitle").textContent=p.product_name_es||p.product_name||"Nuevo producto";
     const kcal=n["energy-kcal_100g"]??(n["energy-kj_100g"]?num(n["energy-kj_100g"])/4.184:null);$("#productKcal100").value=kcal?round1(kcal):"";$("#productProtein100").value=n.proteins_100g??"";$("#productCarbs100").value=n.carbohydrates_100g??"";$("#productFat100").value=n.fat_100g??"";
-    const unit=(p.product_quantity_unit||p.serving_quantity_unit||"g").toLowerCase();const basis=unit==="ml"?"ml":"g";$("#productNutritionBasis").value=basis;$("#productUnitMeasure").value=basis;$("#productUnitAmount").value=num(p.product_quantity)||num(p.serving_quantity)||"";$("#nutritionSource").textContent="Open Food Facts";toast(kcal?"Producto y nutrición encontrados":"Producto encontrado · faltan kcal")
+    let unit=(p.product_quantity_unit||p.serving_quantity_unit||"").toLowerCase(),packageAmount=num(p.product_quantity)||num(p.serving_quantity);
+    if((!packageAmount||!unit)&&p.quantity){const m=String(p.quantity).replace(",",".").match(/([0-9.]+)\s*(kg|g|l|ml)\b/i);if(m){packageAmount=num(m[1]);unit=m[2].toLowerCase();if(unit==="kg"){packageAmount*=1000;unit="g"}if(unit==="l"){packageAmount*=1000;unit="ml"}}}
+    if(unit==="l"){packageAmount*=1000;unit="ml"}if(unit==="kg"){packageAmount*=1000;unit="g"}
+    const basis=unit==="ml"?"ml":"g";$("#productNutritionBasis").value=basis;$("#productUnitMeasure").value=basis;$("#productUnitAmount").value=packageAmount||"";$("#nutritionSource").textContent="Open Food Facts";toast(packageAmount?(kcal?"Producto, contenido y nutrición encontrados":"Producto y contenido encontrados · faltan kcal"):(kcal?"Producto y nutrición encontrados · revisa el contenido del envase":"Producto encontrado · revisa contenido y kcal"))
   }else{$("#productModalTitle").textContent="Producto no encontrado";toast("Completa los datos manualmente")}
   openModal("productModal")
  }catch(err){await stopScanner();closeModal("scannerModal");resetEditor();$("#productBarcode").value=clean;openModal("productModal");toast("Sin datos online. Añádelo manualmente")}

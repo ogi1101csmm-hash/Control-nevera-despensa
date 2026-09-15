@@ -67,3 +67,14 @@ Los datos existentes siguen usando las mismas claves de inventario y comidas. Lo
 ## Copia de seguridad
 
 La exportacion JSON incluye ahora inventario, historial, platos y consumos nutricionales.
+
+
+## Cambio v4 - stock real por gramos y mililitros
+- Los productos con contenido conocido ya no se vacían al consumir una parte del envase.
+- Cada producto almacena `stockAmount`, que representa la cantidad física disponible.
+- Ejemplo: caldo de 1 L -> 1000 ml. Consumir 250 ml deja 750 ml.
+- Ejemplo: pepinillos de 350 g. Consumir 80 g deja 270 g.
+- Añadir un envase suma automáticamente su contenido completo al stock real.
+- El descarte resta g/ml del stock pero nunca añade calorías.
+- Los productos antiguos se migran automáticamente usando `cantidad de envases x contenido por envase`, cuando ese dato existe.
+- Open Food Facts se consulta también para intentar obtener la cantidad neta del envase (`product_quantity`, unidad y `quantity`).
